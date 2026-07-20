@@ -1,0 +1,313 @@
+---
+title: Lua
+description: 使用 Lua 编写轻量级插件脚本。
+---
+
+## 简介
+
+Lua 是一种轻量级、高效的脚本语言，LSPilot 使用 LuaJIT 引擎，性能优秀，语法简洁。
+
+适合快速编写调试脚本，以及对性能有要求的场景。
+
+## 语法特点
+
+**引擎版本：** LuaJIT 2.1（兼容 Lua 5.1 API）
+
+**限制：**
+- 无 `goto` 语句（Lua 5.1 不支持）
+- 无 `continue` 语句
+
+**语法特点：**
+- 索引从 `1` 开始，而非 `0`
+- 字符串拼接用 `..` 而非 `+`
+- 不等号用 `~=` 而非 `!=`
+- 逻辑运算符：`and` / `or` / `not`
+- 空值：`nil`
+- 注释：`--` 单行，`--[[ ]]--` 多行
+- 函数定义：`function fn(a, b) ... end`
+- 表（Table）即数组/字典：`{"a", "b", "c"}` 或 `{key = "value"}`
+- 可变参数：`function fn(...) ... end`
+- `pcall/xpcall` 捕获异常
+- 冒号 `:` 调用实例方法，点号 `.` 调用静态方法
+
+## 基础语法
+
+### 变量声明
+
+```lua
+local name = "LSPilot"
+local version = 1
+local isVip = true
+```
+
+### import 机制
+
+```lua
+import "java.lang.System"
+import "com.example.TargetClass"
+
+log(TargetClass)
+```
+
+### 条件循环
+
+```lua
+local code = getIntField(obj, "code")
+if code > 100 then
+    log("大于 100")
+elseif code > 50 then
+    log("50-100")
+else
+    log("<= 50")
+end
+
+for i = 0, 9 do
+    log("i =", i)
+end
+```
+
+## Hook API
+
+### hookMethodBefore — 调用前 Hook
+
+```lua
+local TargetClass = findClass("com.example.TargetClass", hostLoader)
+
+hookMethodBefore(TargetClass, "targetMethod", function(param)
+    log("方法被调用")
+end)
+```
+
+#### Before 中修改参数
+
+```lua
+hookMethodBefore(TargetClass, "setData", function(param)
+    log("原始参数:", param.args[0], param:arg(1))
+    param:setArg(0, "修改后的值")
+end)
+```
+
+### hookMethodAfter — 调用后 Hook
+
+```lua
+hookMethodAfter(TargetClass, "getCode", function(param)
+    local original = param.result
+    log("原始返回值:", original)
+    param.result = 999
+end)
+```
+
+### hookReplace — 替换方法
+
+```lua
+hookReplace(TargetClass, "getInfo", function(param)
+    param.result = "伪造的返回值"
+end)
+```
+
+### 带 ID 的 Hook（可替换/可卸载）
+
+```lua
+hookMethodBefore(TargetClass, "onResume", "my_hook_1", function(param)
+    log("原始回调")
+end)
+
+replaceHook("my_hook_1", function(param)
+    log("已替换的回调")
+end)
+
+unhook("my_hook_1")
+```
+
+### 批量 Hook
+
+```lua
+hookAllMethodsBefore(TargetClass, "handleMessage", function(param)
+    log("参数个数:", #param.args)
+end)
+
+hookAllConstructorsBefore(TargetClass, function(param)
+    log("构造实例:", param.thisObject)
+end)
+```
+
+## 反射 API
+
+### 查找类
+
+```lua
+local targetClazz = findClass("com.example.TargetApp$Inner", hostLoader)
+local maybeClazz = findClassOrNull("com.example.MaybeExist", hostLoader)
+```
+
+### 查找方法
+
+```lua
+local m = findMethodExact(TargetClass, "onCreate", Bundle.class)
+local m2 = findMethodBestMatch(TargetClass, "onEvent", eventObj, "tag")
+local ms = findMethodsByReturnType(TargetClass, String.class)
+```
+
+### 查找字段
+
+```lua
+local f = findField(TargetClass, "mContext")
+local f2 = findFirstFieldByType(TargetClass, Context.class)
+local all = allFields(TargetClass)
+```
+
+### 读取实例字段
+
+```lua
+local val = getIntField(obj, "count")
+local id = getLongField(obj, "id")
+local flag = getBooleanField(obj, "enabled")
+local rate = getFloatField(obj, "rate")
+local price = getDoubleField(obj, "price")
+local b = getByteField(obj, "flag")
+local name = getStringField(obj, "name")
+local data = getObjectField(obj, "data")
+```
+
+### 设置实例字段
+
+```lua
+setIntField(obj, "count", 100)
+setLongField(obj, "id", 999999)
+setBooleanField(obj, "enabled", true)
+setFloatField(obj, "rate", 1.5)
+setDoubleField(obj, "price", 99.99)
+setByteField(obj, "flag", 1)
+setShortField(obj, "val", 100)
+setObjectField(obj, "data", newData)
+```
+
+### 读取/设置静态字段
+
+```lua
+local count = getStaticIntField(TargetClass, "sCount")
+setStaticIntField(TargetClass, "sCount", 999)
+
+local instance = getStaticObjectField(TargetClass, "INSTANCE")
+setStaticObjectField(TargetClass, "INSTANCE", nil)
+```
+
+### 调用方法
+
+```lua
+local result = callMethod(obj, "getString", "key")
+local code = callMethod(obj, "getCode")
+
+local r2 = callMethodExact(obj, "setValue", {String.class, Integer.TYPE}, "key", 100)
+
+local code2 = callStaticMethod(TargetClass, "getCode", 100)
+```
+
+### 创建对象实例
+
+```lua
+local obj = newInstance(TargetClass)
+local obj2 = newInstance(TargetClass, "arg1", 100)
+local obj3 = newInstanceExact(TargetClass, {String.class, Integer.TYPE}, "arg1", 100)
+```
+
+### 附加字段
+
+```lua
+setAdditionalField(obj, "myKey", someData)
+local data = getAdditionalField(obj, "myKey")
+```
+
+## DexKit 查找 API
+
+### 查找类
+
+```lua
+local cf = findClass()
+cf:pkg("com.example")
+cf:usingStrings("keyWord")
+local clazz = cf:single()
+
+local clazz2 = findClass()
+    :method("onCreate")
+    :singleOrNull()
+```
+
+### 查找方法
+
+```lua
+local method = findMethod()
+    :inClass(clazz)
+    :name("sendMessage")
+    :paramCount(3)
+    :singleMethod()
+```
+
+### 查找字段
+
+```lua
+local field = findField()
+    :inClass(clazz)
+    :type(String.class)
+    :singleField()
+```
+
+## 日志与提示
+
+### 日志输出
+
+```lua
+log("插件已加载")
+log("当前版本:", hostVerName)
+log("值:", 100, true)
+log("a", "b", "c")
+```
+
+### Toast 提示
+
+```lua
+toast("插件已加载")
+toast("当前版本: " .. hostVerName)
+```
+
+## 错误处理
+
+```lua
+local ok, result = pcall(function()
+    local clazz = findClass("com.example.NotExist", hostLoader)
+    return clazz
+end)
+
+if not ok then
+    log("出错了:", result)
+else
+    log("成功:", result)
+end
+```
+
+## 调试技巧
+
+```lua
+local all = allFields(TargetClass)
+for i = 1, #all do
+    log("字段", i, ":", all[i]:getName(), "类型:", all[i]:getType():getName())
+end
+
+local methods = findMethodsByReturnType(TargetClass, String.class)
+for i = 1, #methods do
+    log("方法", i, ":", methods[i]:getName())
+end
+
+log("类名:", TargetClass:getName())
+log("超类:", TargetClass:getSuperclass():getName())
+```
+
+## 线程说明
+
+Lua 不提供原生线程。建议在 Hook 回调中处理时序逻辑。
+
+```lua
+hookMethodBefore(TargetClass, "onResume", function(param)
+    log("可在此处做延时处理")
+end)
+```

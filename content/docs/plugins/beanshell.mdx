@@ -1,0 +1,299 @@
+---
+title: BeanShell (Java)
+description: 使用 BeanShell 编写 Java 风格的插件脚本。
+---
+
+## 简介
+
+BeanShell 是一种轻量级的 Java 脚本语言，与 Java 语法高度兼容，可以直接调用 Android API 和 Xposed 框架。
+
+适合熟悉 Java 的开发者，能充分发挥 Xposed 的全部能力。
+
+## 语法特点
+
+**引擎版本：** 最新版（支持 Lambda、泛型、try-with-resources 等 Java 8 语法）
+
+**限制：**
+- 仍不支持 Java 注解（`@Override`、`@SuppressWarnings` 等），代码中请勿使用
+- 推荐使用 `findClass()` 获取 Class 对象，`import` 在多类加载器场景下可能定位不准确
+- Hook 回调使用 Lambda 表达式：`param -> { ... }`
+
+**语法特点：**
+- 完全兼容标准 Java 语法：变量声明、if/else、for/while、switch-case、Lambda、泛型
+- 方法调用、字段访问、数组创建等 Java 标准语法均可用
+- `import` 语句导入 Java 类
+- 分号可选：独立语句可加分号也可不加；**同一行多条语句必须加分号**（如 `int a = 1; String b = "hello"`）
+- 弱类型支持：变量声明可省略类型，自动推断（如 `name = "LSPilot"` 等同于 `String name = "LSPilot"`）
+
+## 基础语法
+
+### 变量声明
+
+```java
+String name = "LSPilot";
+int version = 1;
+boolean isVip = true;
+```
+
+支持弱类型，可省略类型声明：
+
+```java
+name = "LSPilot";       // 自动推断为 String
+version = 1;            // 自动推断为 int
+isVip = true;           // 自动推断为 boolean
+clazz = findClass("com.example.Target", hostLoader);  // 自动推断为 Class
+```
+
+### import 机制
+
+```java
+import java.lang.System;
+import com.example.TargetClass;
+
+log(TargetClass);
+```
+
+## Hook API
+
+Hook API 通过 `HookRouter` 统一提供，支持 before/after/replace 三种模式。
+
+### HookParam 属性
+
+| 属性/方法 | 类型 | 说明 |
+|-----------|------|------|
+| `thisObject` | `Object?` | 方法所属实例（静态方法为 `null`） |
+| `args` | `Object[]` | 方法参数数组 |
+| `arg(int)` | `Object?` | 按索引获取参数 |
+| `setArg(int, Object?)` | — | 修改参数值 |
+| `result` | `Object?` | 返回值（可读写） |
+| `throwable` | `Throwable?` | 异常（可读写） |
+| `hasThrowable` | `boolean` | 是否有异常 |
+| `skipWith(Object?)` | — | 跳过原始方法并指定返回值 |
+
+### hookMethodBefore — 调用前 Hook
+
+```java
+Class clazz = findClass("com.example.TargetClass", hostLoader);
+
+hookMethodBefore(clazz, "targetMethod", param -> {
+    log("方法被调用");
+});
+```
+
+### hookMethodAfter — 调用后 Hook
+
+```java
+hookMethodAfter(clazz, "getCode", param -> {
+    Object original = param.result;
+    log("原始返回值:", original);
+    param.result = 999;
+});
+```
+
+### hookReplace — 替换方法
+
+```java
+hookReplace(clazz, "getInfo", param -> {
+    param.result = "伪造的返回值";
+});
+```
+
+### 带 ID 的 Hook（可替换/可卸载）
+
+```java
+hookMethodBefore(clazz, "onResume", "my_hook_1", param -> {
+    log("原始回调");
+});
+
+replaceHook("my_hook_1", param -> {
+    log("已替换的回调");
+});
+
+unhook("my_hook_1");
+```
+
+### 批量 Hook
+
+```java
+hookAllMethodsBefore(clazz, "handleMessage", param -> {
+    log("参数个数:", param.args.length);
+});
+
+hookAllConstructorsBefore(clazz, param -> {
+    log("构造实例:", param.thisObject);
+});
+```
+
+## 反射 API
+
+### 查找类
+
+```java
+Class targetClazz = findClass("com.example.TargetApp$Inner", hostLoader);
+Class maybeClazz = findClassOrNull("com.example.MaybeExist", hostLoader);
+```
+
+### 查找方法
+
+```java
+Method m = findMethodExact(TargetClass, "onCreate", Bundle.class);
+Method m2 = findMethodBestMatch(TargetClass, "onEvent", eventObj, "tag");
+List<Method> ms = findMethodsByReturnType(TargetClass, String.class);
+```
+
+### 查找字段
+
+```java
+Field f = findField(TargetClass, "mContext");
+Field f2 = findFirstFieldByType(TargetClass, Context.class);
+Field[] all = allFields(TargetClass);
+```
+
+### 读取实例字段
+
+```java
+int val = getIntField(obj, "count");
+long id = getLongField(obj, "id");
+boolean flag = getBooleanField(obj, "enabled");
+float rate = getFloatField(obj, "rate");
+double price = getDoubleField(obj, "price");
+byte b = getByteField(obj, "flag");
+String name = getStringField(obj, "name");
+Object data = getObjectField(obj, "data");
+```
+
+### 设置实例字段
+
+```java
+setIntField(obj, "count", 100);
+setLongField(obj, "id", 999999L);
+setBooleanField(obj, "enabled", true);
+setFloatField(obj, "rate", 1.5f);
+setDoubleField(obj, "price", 99.99);
+setByteField(obj, "flag", (byte)1);
+setShortField(obj, "val", (short)100);
+setObjectField(obj, "data", newData);
+```
+
+### 读取/设置静态字段
+
+```java
+int count = getStaticIntField(TargetClass, "sCount");
+setStaticIntField(TargetClass, "sCount", 999);
+
+Object instance = getStaticObjectField(TargetClass, "INSTANCE");
+setStaticObjectField(TargetClass, "INSTANCE", null);
+```
+
+### 调用方法
+
+```java
+String result = callMethod(obj, "getString", "key");
+int code = callMethod(obj, "getCode");
+
+String r2 = callMethodExact(obj, "setValue", [String.class, Integer.TYPE], "key", 100);
+
+int code2 = callStaticMethod(TargetClass, "getCode", 100);
+```
+
+### 创建对象实例
+
+```java
+Object obj = newInstance(TargetClass);
+Object obj2 = newInstance(TargetClass, "arg1", 100);
+Object obj3 = newInstanceExact(TargetClass, [String.class, Integer.TYPE], "arg1", 100);
+```
+
+### 附加字段
+
+```java
+setAdditionalField(obj, "myKey", someData);
+Object data = getAdditionalField(obj, "myKey");
+```
+
+## DexKit 查找 API
+
+DexKit 是一个 DEX 字节码搜索引擎，可在不加载目标类的情况下，通过特征定位类、方法和字段。
+
+### 查找类
+
+```java
+Class<?> clazz = findClass()
+    .pkg("com.example")
+    .usingStrings("keyWord")
+    .single();
+
+Class clazz2 = findClass()
+    .method("onCreate")
+    .singleOrNull();
+```
+
+### 查找方法
+
+```java
+Method method = findMethod()
+    .inClass(clazz)
+    .name("sendMessage")
+    .paramCount(3)
+    .singleMethod();
+```
+
+### 查找字段
+
+```java
+Field field = findField()
+    .inClass(clazz)
+    .type(String.class)
+    .singleField();
+```
+
+## 日志与提示
+
+### 日志输出
+
+```java
+log("插件已加载");
+log("当前版本:", hostVerName);
+log("值:", 100, true);
+log("a", "b", "c");
+```
+
+### Toast 提示
+
+```java
+toast("插件已加载");
+toast("当前版本: " + hostVerName);
+```
+
+## 线程与异步
+
+```java
+Thread.sleep(1000);
+log("1秒后执行");
+
+new Thread(new Runnable() {
+    public void run() {
+        log("子线程中执行");
+    }
+}).start();
+```
+
+## 错误处理
+
+```java
+try {
+    Class clazz = findClass("com.example.NotExist", hostLoader);
+} catch (Exception e) {
+    log("出错了:", e.getMessage());
+}
+```
+
+## 常见错误
+
+| 错误 | 原因 | 解决 |
+|------|------|------|
+| `ClassNotFoundException` | 类名错或 ClassLoader 不对 | 确认包名，使用 `hostLoader` |
+| `NoSuchMethodError` | 方法名/参数类型不匹配 | 先用 `findMethodsByReturnType` 列出 |
+| `NoSuchFieldError` | 字段名错或被混淆 | 用 `findFirstFieldByType` 按类型找 |
+| `InvocationTargetException` | 调用的方法内部抛异常 | 检查参数，查看 cause |
+| `NullPointerException` | 对象为 null | 用 `null` 判断后再使用 |

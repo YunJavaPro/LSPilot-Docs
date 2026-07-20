@@ -1,0 +1,57 @@
+---
+title: 安装指南
+description: 如何安装和激活 LSPilot 模块。
+---
+
+## 环境要求
+
+在开始安装之前，请确保你的设备满足以下要求：
+
+| 项目 | 要求 |
+| --- | --- |
+| Xposed 框架 | LSPosed |
+| Android 版本 | Android 14.0 及以上 |
+| 架构 | arm64-v8a |
+
+## 安装步骤
+
+1. **确保已安装 LSPosed 框架**
+
+   LSPilot 依赖 LSPosed 框架运行，请先确保你的设备已正确安装并激活 LSPosed。
+
+2. **下载 APK 文件**
+
+   从以下任一渠道下载最新版本的 APK：
+   - [GitHub Releases](https://github.com/Xposed-Modules-Repo/me.yun.lspilot/releases)
+   - [Telegram 频道](https://t.me/LSPilot)
+
+3. **安装 APK**
+
+   在手机上安装下载的 APK 文件。如果系统提示安全风险，请允许来自此来源的安装。
+
+4. **在 LSPosed 中激活模块**
+
+   打开 LSPosed 管理器，进入"模块"页面，找到 LSPilot 并启用它。
+
+5. **选择作用域**
+
+   在模块设置中，选择需要分析或调试的目标应用作为作用域。
+
+6. **重启目标应用**
+
+   强制停止目标应用并重新打开，LSPilot 模块即可生效。
+
+## 验证安装
+
+安装完成后，打开 LSPilot 应用，如果能看到主界面且功能正常响应，说明安装成功。
+
+## 常见安装问题
+
+<Callout type="info">
+  如果在 LSPosed 中看不到 LSPilot 模块，请确保 LSPosed 版本兼容，并尝试重启设备后再检查。
+</Callout>
+
+## 下一步
+
+- [使用教程](/get-started/usage)：学习如何使用 LSPilot 进行逆向分析
+- [功能介绍](/features)：了解所有可用功能

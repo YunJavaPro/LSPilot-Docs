@@ -1,0 +1,99 @@
+---
+title: 快速开始
+description: 学习如何编写你的第一个 LSPilot 插件脚本。
+---
+
+## 插件存储位置
+
+插件脚本存储在以下目录：
+
+```
+Android/media/<包名>/LSPilot/Plugin/
+```
+
+创建插件后可直接在应用内编辑运行。
+
+## 支持的脚本语言
+
+LSPilot 支持三种脚本语言：
+
+| 语言 | 引擎 | 特点 |
+| --- | --- | --- |
+| BeanShell (Java) | BeanShell | 兼容 Java 语法，支持 Lambda、泛型、try-with-resources |
+| Lua | LuaJIT 2.1 | 轻量高效，语法简洁，索引从 1 开始 |
+| JavaScript | Rhino 1.9.1 | ES5 语法，不支持 ES6+ |
+
+## 插件配置文件
+
+每个插件目录下必须包含 `info.prop` 文件，定义插件元信息：
+
+```properties
+name=插件名称示例            # [必填] 插件名称
+author=作者名                # [必填] 作者
+version=1.0.0               # [必填] 版本号
+desc=插件功能描述             # [可选] 描述
+```
+
+脚本类型由入口文件扩展名自动识别：`main.java` → Bsh，`main.lua` → Lua，`main.js` → Js。
+
+## 目录结构
+
+```
+LSPilot/Plugin/示例插件/
+├── info.prop
+├── main.java          # 或 main.lua / main.js
+└── lib/               # 可选，存放依赖脚本
+    └── utils.js
+```
+
+## 全局变量
+
+插件运行时自动注入的全局变量，可直接使用：
+
+### 插件信息
+
+| 变量名 | 类型 | 说明 |
+|--------|------|------|
+| `pluginSdk` | int | SDK 版本号（固定为 `1`） |
+| `pluginName` | String | 插件名称 |
+| `pluginAuthor` | String | 插件作者 |
+| `pluginVersion` | String | 插件版本 |
+| `pluginPath` | String | 插件目录绝对路径 |
+
+### 宿主信息
+
+| 变量名 | 类型 | 说明 |
+|--------|------|------|
+| `hostVerName` | String | 宿主应用版本名 |
+| `hostVerCode` | int | 宿主应用版本号 |
+| `hostContext` | Context | 宿主应用的 Context 对象 |
+| `hostLoader` | ClassLoader | 宿主应用的 ClassLoader |
+
+## 插件生命周期
+
+### 加载流程
+
+```
+点击开关 / 应用启动
+  └─ PluginManager.load()
+       ├─ 读取 info.prop, 确定语言类型
+       ├─ 创建对应编译器实例
+       ├─ 注入全局变量
+       ├─ 注册 API 函数到全局命名空间
+       └─ 执行脚本文件（main.java / main.lua / main.js）
+```
+
+### 卸载流程
+
+```
+关闭开关 / 应用退出
+  └─ PluginManager.unload()
+       └─ 停止编译器实例、清理全局变量、释放资源
+```
+
+## 下一步
+
+- [BeanShell 教程](/plugins/beanshell)：学习 Java 风格的插件开发
+- [Lua 教程](/plugins/lua)：学习 Lua 脚本开发
+- [JavaScript 教程](/plugins/javascript)：学习 JS 脚本开发
+- [示例代码](/plugins/examples)：查看常用场景的插件示例

@@ -1,0 +1,284 @@
+---
+title: JavaScript
+description: 使用 JavaScript 编写插件脚本。
+---
+
+## 简介
+
+JavaScript 引擎基于 Rhino 1.9.1（ES5），适合前端开发者使用。
+
+## 语法特点
+
+**引擎版本：** Rhino 1.9.1（ES5，不支持 ES6+）
+
+**限制：**
+- 不支持 ES6+ 语法（箭头函数 `=>`、`let/const`、模板字符串、解构赋值、`class` 关键字、`Promise/async/await`）
+- 不支持 `import/export` 模块语法
+- 不提供 `setTimeout`/`setInterval`
+
+**语法特点：**
+- 使用 `var` 声明变量（不支持 `let`/`const`）
+- 函数定义：`function fn(a, b) { ... }`
+- 使用 `===` 严格相等比较
+- 空值：`null`
+- 数组索引从 `0` 开始
+
+## 基础语法
+
+### 变量声明
+
+```javascript
+var name = "LSPilot";
+var version = 1;
+var isVip = true;
+```
+
+### import 机制
+
+```javascript
+importClass("java.lang.System");
+importClass("com.example.TargetClass");
+
+log(TargetClass);
+```
+
+### 条件循环
+
+```javascript
+var code = getIntField(obj, "code");
+if (code > 100) {
+    log("大于 100");
+} else if (code > 50) {
+    log("50-100");
+} else {
+    log("<= 50");
+}
+
+for (var i = 0; i < 10; i++) {
+    log("i =", i);
+}
+```
+
+## Hook API
+
+### hookMethodBefore — 调用前 Hook
+
+```javascript
+var clazz = findClass("com.example.TargetClass", hostLoader);
+
+hookMethodBefore(clazz, "targetMethod", function(param) {
+    log("方法被调用");
+});
+```
+
+#### Before 中修改参数
+
+```javascript
+hookMethodBefore(TargetClass, "setData", function(param) {
+    log("原始参数:", param.args[0], param.arg(1));
+    param.setArg(0, "修改后的值");
+});
+```
+
+### hookMethodAfter — 调用后 Hook
+
+```javascript
+hookMethodAfter(clazz, "getCode", function(param) {
+    var original = param.result;
+    log("原始返回值:", original);
+    param.result = 999;
+});
+```
+
+### hookReplace — 替换方法
+
+```javascript
+hookReplace(clazz, "getInfo", function(param) {
+    param.result = "伪造的返回值";
+});
+```
+
+### 带 ID 的 Hook（可替换/可卸载）
+
+```javascript
+hookMethodBefore(TargetClass, "onResume", "my_hook_1", function(param) {
+    log("原始回调");
+});
+
+replaceHook("my_hook_1", function(param) {
+    log("已替换的回调");
+});
+
+unhook("my_hook_1");
+```
+
+### 批量 Hook
+
+```javascript
+hookAllMethodsBefore(TargetClass, "handleMessage", function(param) {
+    log("参数个数:", param.args.length);
+});
+
+hookAllConstructorsBefore(TargetClass, function(param) {
+    log("构造实例:", param.thisObject);
+});
+```
+
+## 反射 API
+
+### 查找类
+
+```javascript
+var targetClazz = findClass("com.example.TargetApp$Inner", hostLoader);
+var maybeClazz = findClassOrNull("com.example.MaybeExist", hostLoader);
+```
+
+### 查找方法
+
+```javascript
+var m = findMethodExact(TargetClass, "onCreate", Bundle.class);
+var m2 = findMethodBestMatch(TargetClass, "onEvent", eventObj, "tag");
+var ms = findMethodsByReturnType(TargetClass, String.class);
+```
+
+### 查找字段
+
+```javascript
+var f = findField(TargetClass, "mContext");
+var f2 = findFirstFieldByType(TargetClass, Context.class);
+var all = allFields(TargetClass);
+```
+
+### 读取实例字段
+
+```javascript
+var val = getIntField(obj, "count");
+var id = getLongField(obj, "id");
+var flag = getBooleanField(obj, "enabled");
+var rate = getFloatField(obj, "rate");
+var price = getDoubleField(obj, "price");
+var b = getByteField(obj, "flag");
+var name = getStringField(obj, "name");
+var data = getObjectField(obj, "data");
+```
+
+### 设置实例字段
+
+```javascript
+setIntField(obj, "count", 100);
+setLongField(obj, "id", 999999);
+setBooleanField(obj, "enabled", true);
+setFloatField(obj, "rate", 1.5);
+setDoubleField(obj, "price", 99.99);
+setByteField(obj, "flag", 1);
+setShortField(obj, "val", 100);
+setObjectField(obj, "data", newData);
+```
+
+### 读取/设置静态字段
+
+```javascript
+var count = getStaticIntField(TargetClass, "sCount");
+setStaticIntField(TargetClass, "sCount", 999);
+
+var instance = getStaticObjectField(TargetClass, "INSTANCE");
+setStaticObjectField(TargetClass, "INSTANCE", null);
+```
+
+### 调用方法
+
+```javascript
+var result = callMethod(obj, "getString", "key");
+var code = callMethod(obj, "getCode");
+
+var r2 = callMethodExact(obj, "setValue", [String.class, Integer.TYPE], "key", 100);
+
+var code2 = callStaticMethod(TargetClass, "getCode", 100);
+```
+
+### 创建对象实例
+
+```javascript
+var obj = newInstance(TargetClass);
+var obj2 = newInstance(TargetClass, "arg1", 100);
+var obj3 = newInstanceExact(TargetClass, [String.class, Integer.TYPE], "arg1", 100);
+```
+
+### 附加字段
+
+```javascript
+setAdditionalField(obj, "myKey", someData);
+var data = getAdditionalField(obj, "myKey");
+```
+
+## DexKit 查找 API
+
+### 查找类
+
+```javascript
+var clazz = findClass()
+    .pkg("com.example")
+    .usingStrings("keyWord")
+    .single();
+
+var clazz2 = findClass()
+    .method("onCreate")
+    .singleOrNull();
+```
+
+### 查找方法
+
+```javascript
+var method = findMethod()
+    .inClass(clazz)
+    .name("sendMessage")
+    .paramCount(3)
+    .singleMethod();
+```
+
+### 查找字段
+
+```javascript
+var field = findField()
+    .inClass(clazz)
+    .type(String.class)
+    .singleField();
+```
+
+## 日志与提示
+
+### 日志输出
+
+```javascript
+log("插件已加载");
+log("当前版本:", hostVerName);
+log("值:", 100, true);
+log("a", "b", "c");
+```
+
+### Toast 提示
+
+```javascript
+toast("插件已加载");
+toast("当前版本: " + hostVerName);
+```
+
+## 错误处理
+
+```javascript
+try {
+    var clazz = findClass("com.example.NotExist", hostLoader);
+} catch (e) {
+    log("出错了:", String(e));
+}
+```
+
+## 线程说明
+
+Rhino 不提供 `setTimeout`。建议在 Hook 回调中处理时序逻辑。
+
+```javascript
+hookMethodBefore(TargetClass, "onResume", function(param) {
+    log("可在此处做延时处理");
+});
+```

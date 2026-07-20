@@ -1,0 +1,313 @@
+---
+title: 示例代码
+description: 常见场景的插件脚本示例。
+---
+
+## 支付结果回调监听
+
+```lua
+import "org.json.JSONObject"
+
+local SERVER_URL = "https://your-server.com/notify"
+
+function sendNotify(json)
+    local urlCls = findClass("java.net.URL", hostLoader)
+    local url = newInstance(urlCls, SERVER_URL)
+    local conn = callMethod(url, "openConnection")
+    callMethod(conn, "setRequestMethod", "POST")
+    callMethod(conn, "setDoOutput", true)
+    callMethod(conn, "setRequestProperty", "Content-Type", "application/json")
+    local out = callMethod(conn, "getOutputStream")
+    callMethod(out, "write", callMethod(json, "toString"):getBytes("UTF-8"))
+    callMethod(out, "close")
+    log("服务端响应码:", callMethod(conn, "getResponseCode"))
+end
+
+local payClazz = findClass()
+    :pkg("com.example.pay")
+    :usingStrings("payResult", "tradeNo")
+    :singleOrNull()
+
+if payClazz == nil then
+    log("未找到支付类，请更新匹配条件")
+    return
+end
+
+hookMethodBefore(payClazz, "onPayResult", function(param)
+    local intent = callMethod(param.thisObject, "getIntent")
+    local extras = callMethod(intent, "getExtras")
+    local result = callMethod(extras, "getString", "pay_result")
+    if result ~= nil then
+        log("支付结果:", result)
+        local json = newInstance(JSONObject)
+        callMethod(json, "put", "result", result)
+        callMethod(json, "put", "appVersion", hostVerName)
+        sendNotify(json)
+    end
+end)
+
+toast("支付监听已启动")
+```
+
+## 修改 VIP 状态
+
+```lua
+import "com.iapp.app.HomeApp"
+import "com.iapp.app.c"
+
+hookMethodBefore(HomeApp, "p0", function(param)
+    local obj = param.thisObject
+    setIntField(obj, "u", 6)
+    setIntField(obj, "y", 1)
+    setStaticObjectField(c, "r0", {})
+    setStaticIntField(c, "v0", 0)
+    log("VIP 限制已解除")
+end)
+```
+
+## 拦截并修改返回值
+
+### replace 模式
+
+```lua
+hookReplace(UserManager, "isVIP", function(param)
+    param.result = true
+end)
+```
+
+### after 模式
+
+```lua
+hookMethodAfter(UserManager, "getLevel", function(param)
+    if param.result ~= nil and param.result < 10 then
+        log("等级提升:", param.result, "->", 10)
+        param.result = 10
+    end
+end)
+```
+
+## 附加字段跟踪计数
+
+```lua
+hookMethodBefore(TargetClass, "onClick", function(param)
+    local obj = param.thisObject
+    local count = getAdditionalField(obj, "clickCount") or 0
+    count = count + 1
+    setAdditionalField(obj, "clickCount", count)
+    log("点击次数:", count)
+end)
+```
+
+## 会员校验绕过
+
+### BeanShell
+
+```java
+Class clazz = findClass("com.example.TargetClass", hostLoader);
+
+hookReplace(clazz, "isVip", param -> {
+    param.result = true;
+});
+```
+
+### Lua
+
+```lua
+hookReplace(TargetClass, "isVip", function(param)
+    param.result = true
+end)
+```
+
+### JavaScript
+
+```javascript
+hookReplace(TargetClass, "isVip", function(param) {
+    param.result = true;
+});
+```
+
+## 修改返回值（字符串）
+
+### BeanShell
+
+```java
+Class clazz = findClass("com.example.TargetClass", hostLoader);
+
+hookMethodAfter(clazz, "getUsername", param -> {
+    param.result = "LSPilot";
+});
+```
+
+### Lua
+
+```lua
+hookMethodAfter(TargetClass, "getUsername", function(param)
+    param.result = "LSPilot"
+end)
+```
+
+## 拦截方法参数
+
+### BeanShell
+
+```java
+Class clazz = findClass("com.example.TargetClass", hostLoader);
+
+hookMethodBefore(clazz, "login", param -> {
+    String username = (String) param.args[0];
+    String password = (String) param.args[1];
+    log("登录: " + username + " / " + password);
+});
+```
+
+### Lua
+
+```lua
+hookMethodBefore(TargetClass, "login", function(param)
+    local username = param.args[0]
+    local password = param.args[1]
+    log("登录: " .. username .. " / " .. password)
+end)
+```
+
+## 调用其他方法
+
+### BeanShell
+
+```java
+Class clazz = findClass("com.example.TargetClass", hostLoader);
+
+hookMethodAfter(clazz, "someMethod", param -> {
+    Object instance = param.thisObject;
+    callMethod(instance, "anotherMethod", "arg1");
+});
+```
+
+## 性能与最佳实践
+
+### Hook 注意事项
+
+1. 只 Hook 必要的方法，每个 Hook 有性能开销。
+2. Hook 回调在宿主主线程执行，不要做耗时操作。
+3. **避免死循环**：Hook 回调中不要调用被 Hook 的同一个方法。
+
+```lua
+hookMethodBefore(MyClass, "setData", function(param)
+    param:setArg(0, "modified")
+end)
+```
+
+4. 用完及时 `unhook(id)` 清理。
+
+### 反射优化
+
+- 在脚本顶层缓存 Class 对象，不要在回调中反复 `findClass`。
+- `findField` / `findMethodExact` 内部已有缓存，重复调用安全。
+- 优先使用类型化方法（`getIntField` 比 `getObjectField` + 强转更快）。
+
+### 常见陷阱
+
+| 陷阱 | 说明 | 对策 |
+|------|------|------|
+| 混淆 | 目标应用类名每版可能变化 | 使用 DexKit，不硬编码类名 |
+| 多进程 | 目标应用可能有多个进程 | 在项目设置中选择正确进程模式 |
+| 语法错误 | Lua/JS/Bsh 语法差异 | 确认入口文件扩展名正确（main.java / main.lua / main.js） |
+
+### 三语言语法对照
+
+| 含义 | Bsh (Java) | Lua | Js |
+|------|------------|-----|-----|
+| 字符串拼接 | `"a" + "b"` | `"a" .. "b"` | `"a" + "b"` |
+| 相等 | `==` | `==` | `===` |
+| 不等 | `!=` | `~=` | `!==` |
+| 与 | `&&` | `and` | `&&` |
+| 或 | `\|\|` | `or` | `\|\|` |
+| 非 | `!` | `not` | `!` |
+| 注释 | `//` | `--` | `//` |
+| 空值 | `null` | `nil` | `null` |
+| 数组索引起始 | `arr[0]` | `arr[1]` | `arr[0]` |
+| 函数定义 | `void fn(){}` | `function fn() end` | `function fn(){}` |
+| 字符串长度 | `str.length()` | `#str` | `str.length` |
+
+## API 快速参考
+
+### 日志与提示
+
+| 函数 | 说明 |
+|------|------|
+| `log(...)` | 输出日志 |
+| `toast(msg)` | Toast 提示 |
+
+### Hook
+
+| 函数 | 说明 |
+|------|------|
+| `hookMethodBefore(clazz, name, [id], cb)` | 调用前 Hook |
+| `hookMethodAfter(clazz, name, [id], cb)` | 调用后 Hook |
+| `hookReplace(clazz, name, [id], cb)` | 替换方法 |
+| `hookAllMethodsBefore(clazz, name, cb)` | 所有重载 Before |
+| `hookAllMethodsAfter(clazz, name, cb)` | 所有重载 After |
+| `hookAllConstructorsBefore(clazz, cb)` | 所有构造函数 Before |
+| `replaceHook(id, cb)` | 替换已注册 Hook |
+| `unhook(id)` | 卸载 Hook |
+
+### 反射
+
+| 函数 | 说明 |
+|------|------|
+| `findClass(name, loader)` | 查找类 |
+| `findClassOrNull(name, loader)` | 查找类（安全版） |
+| `findMethodExact(clazz, name, ...params)` | 精确查找方法 |
+| `findMethodBestMatch(clazz, name, ...args)` | 按参数匹配方法 |
+| `findMethodsByReturnType(clazz, type)` | 按返回类型查找 |
+| `findField(clazz, name)` | 按名称查找字段 |
+| `findFirstFieldByType(clazz, type)` | 按类型查找字段 |
+| `allFields(clazz)` | 列出所有字段 |
+
+### 字段操作
+
+| 函数 | 说明 |
+|------|------|
+| `getIntField(obj, name)` / `setIntField(obj, name, val)` | 实例字段（int） |
+| `getLongField(obj, name)` / `setLongField(obj, name, val)` | 实例字段（long） |
+| `getBooleanField(obj, name)` / `setBooleanField(obj, name, val)` | 实例字段（boolean） |
+| `getFloatField(obj, name)` / `setFloatField(obj, name, val)` | 实例字段（float） |
+| `getDoubleField(obj, name)` / `setDoubleField(obj, name, val)` | 实例字段（double） |
+| `getStringField(obj, name)` | 实例字段（String） |
+| `getObjectField(obj, name)` / `setObjectField(obj, name, val)` | 实例字段（Object） |
+| `getStaticIntField(clazz, name)` / `setStaticIntField(clazz, name, val)` | 静态字段（int） |
+| `getStaticObjectField(clazz, name)` / `setStaticObjectField(clazz, name, val)` | 静态字段（Object） |
+
+### 方法调用
+
+| 函数 | 说明 |
+|------|------|
+| `callMethod(obj, name, ...args)` | 调用实例方法 |
+| `callMethodExact(obj, name, params, ...args)` | 精确调用实例方法 |
+| `callStaticMethod(clazz, name, ...args)` | 调用静态方法 |
+
+### 构造与其他
+
+| 函数 | 说明 |
+|------|------|
+| `newInstance(clazz, ...args)` | 创建实例 |
+| `newInstanceExact(clazz, params, ...args)` | 精确创建实例 |
+| `setAdditionalField(obj, key, val)` | 设置附加字段 |
+| `getAdditionalField(obj, key)` | 读取附加字段 |
+| `getEnumConstant(clazz, name)` | 获取枚举常量 |
+| `newArray(clazz, length)` | 创建数组 |
+
+### DexKit
+
+| 函数 | 说明 |
+|------|------|
+| `findClass()` | 链式查类 |
+| `findMethod()` | 链式查方法 |
+| `findField()` | 链式查字段 |
+
+## 注意事项
+
+- 示例代码仅供参考，请根据实际应用调整
+- 类名和方法名可能因版本而异
+- 建议先用逆向分析工具确认目标
+- 遵守相关法律法规，仅用于学习研究目的
