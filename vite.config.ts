@@ -16,7 +16,7 @@ const prerenderDocPages = docEntries.map((doc) => ({
 }));
 
 export default defineConfig({
-  base: '/LSPilot-Docs/',
+  base: '/',
   server: {
     port: 3000,
   },
